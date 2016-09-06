@@ -29,7 +29,7 @@ preferences {
 	section("Determine presence with:") {
 		input "motion_sensor", "capability.motionSensor", required: true, title: "Which motion sensor?"
         input "light_sensor", "capability.illuminanceMeasurement", required: true, title: "Which light sensor?"
-        input "light_threshold", "number", defaultValue: 130, range: "0..1000", required: false, title: "Luminance threshold (in lux)"
+        input "light_threshold", "number", defaultValue: 100, range: "0..1000", required: false, title: "Luminance threshold (in lux)"
         input "light_delta_threshold", "number", defaultValue: 30, range: "0..1000", required: false, title: "Change in luminance (in lux) to trigger a change"
 	}
     section("Simulate presence:") {
@@ -60,10 +60,13 @@ def initialize() {
 	// TODO: subscribe to attributes, devices, locations, etc.
     subscribe(motion_sensor, "motion", motionHandler)
     subscribe(light_sensor, "illuminance", lightChangedHandler)
+    subscribe(presence, "presence", presenceHandler)
 
 	state.motion = motion_sensor.currentValue("motion")
     state.lights = light_sensor.currentValue("illuminance")
     state.last_state = 'unoccupied'
+
+	state.last_presence = presence.currentValue("presence")
 
 	if (light_threshold != null) state.light_threshold = light_threshold + 0
     if (light_delta != null) state.light_delta = light_delta + 0
@@ -73,6 +76,11 @@ def initialize() {
     
     log.debug("Current motion=${state.motion}")
     log.debug("Current lights=${state.lights} (threshold=${state.light_threshold}, delta=${state.light_delta})")
+}
+
+def presenceHandler(evt) {
+	log.debug("presenceHandler: ${String.valueOf(evt.value)}; last state=" + String.valueOf(state.last_presence))
+	state.last_presence = evt.value
 }
 
 def motionHandler(evt) {
@@ -114,7 +122,10 @@ def doReport(motion, lights) {
     	detectedState = 'unoccupied'
     }
 
-	boolean didStateChange = state.last_state != detectedState
+if (detectedState != 'unknown') {
+
+	String oldState = state.last_state
+	boolean didStateChange = oldState != detectedState
     long now = new Date().getTime()
 
     long occupiedSince = 0
@@ -123,7 +134,9 @@ def doReport(motion, lights) {
 	state.last_state = detectedState
 
 	if (didStateChange) {
-    	if (detectedState == 'occupied') {
+    	log.debug("[doReport] state changed: ${oldState} != ${detectedState}; presence sensor=${String.valueOf(state.last_presence)}")
+
+        if (detectedState == 'occupied') {
         	state.last_occupied_time = now
 
 			if (presence != null) {
@@ -143,4 +156,5 @@ def doReport(motion, lights) {
             }
         }
     }
+}
 }
